@@ -1,0 +1,5 @@
+source.tar.gz
+/rustdesk/
+/out/
+/apk/
+__pycache__/

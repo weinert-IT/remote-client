@@ -1,0 +1,347 @@
+diff --git a/src/brand_update.rs b/src/brand_update.rs
+new file mode 100644
+index 0000000..e0f1279
+--- /dev/null
++++ b/src/brand_update.rs
+@@ -0,0 +1,179 @@
++//! Update channel of the branded build (remote-client repo).
++//!
++//! The API server decides which release a device gets (rollout per group,
++//! "update now" from the admin UI) and answers with the file to download. It
++//! cannot make the device run anything else: every offer carries an ed25519
++//! signature over version, build, platform, format, size and SHA-256, made in
++//! the release build with a key whose public half is compiled in here. A
++//! download that does not match the signed size and hash is discarded.
++//!
++//! Request (POST {api-server}/api/client/update):
++//!   {"id", "uuid", "version", "build", "os", "arch", "format", "manual"}
++//! Response: {} when there is nothing to do, else
++//!   {"version", "build", "url", "size", "sha256", "signature"}
++use crate::hbbs_http::create_http_client_with_url_strict;
++use hbb_common::{
++    anyhow::{anyhow, Context},
++    bail,
++    base64::{engine::general_purpose::STANDARD, Engine as _},
++    config::{self, Config},
++    log,
++    sodiumoxide::crypto::sign,
++    ResultType,
++};
++use serde_derive::Deserialize;
++use sha2::{Digest, Sha256};
++use std::{io::Write, path::PathBuf};
++
++/// Build number of this release (the CI run), on top of crate::VERSION.
++pub const BUILD: &str = match option_env!("BRAND_BUILD") {
++    Some(b) => b,
++    None => "0",
++};
++
++const SIGNING_CONTEXT: &str = "weinert-it remote-client update v1";
++const MAX_UPDATE_SIZE: u64 = 512 << 20;
++
++pub fn build_number() -> u64 {
++    BUILD.parse().unwrap_or(0)
++}
++
++#[derive(Debug, Deserialize)]
++pub struct Offer {
++    pub version: String,
++    pub build: u64,
++    pub url: String,
++    pub size: u64,
++    pub sha256: String,
++    pub signature: String,
++}
++
++fn hard_setting(key: &str) -> String {
++    config::HARD_SETTINGS
++        .read()
++        .unwrap()
++        .get(key)
++        .cloned()
++        .unwrap_or_default()
++}
++
++fn update_url() -> String {
++    let url = hard_setting("update-url");
++    if !url.is_empty() {
++        return url;
++    }
++    let api = crate::common::get_api_server(
++        Config::get_option("api-server"),
++        Config::get_option("custom-rendezvous-server"),
++    );
++    if api.is_empty() {
++        return "".to_owned();
++    }
++    format!("{}/api/client/update", api.trim_end_matches('/'))
++}
++
++fn public_key() -> ResultType<sign::PublicKey> {
++    let b64 = hard_setting("update-public-key");
++    let bytes = STANDARD
++        .decode(b64.trim())
++        .context("update-public-key is not base64")?;
++    sign::PublicKey::from_slice(&bytes).ok_or_else(|| anyhow!("invalid update-public-key"))
++}
++
++/// The exact text the release build signs (see sign_release.py).
++pub fn signed_message(version: &str, build: u64, arch: &str, format: &str, size: u64, sha256: &str) -> String {
++    format!(
++        "{SIGNING_CONTEXT}\n{version}\n{build}\n{os}\n{arch}\n{format}\n{size}\n{sha256}",
++        os = std::env::consts::OS,
++        sha256 = sha256.to_lowercase(),
++    )
++}
++
++fn verify_signature(offer: &Offer, format: &str) -> ResultType<()> {
++    let sig = STANDARD
++        .decode(offer.signature.trim())
++        .context("update signature is not base64")?;
++    let sig = sign::Signature::from_bytes(&sig).map_err(|_| anyhow!("invalid update signature"))?;
++    let msg = signed_message(
++        &offer.version,
++        offer.build,
++        std::env::consts::ARCH,
++        format,
++        offer.size,
++        &offer.sha256,
++    );
++    if !sign::verify_detached(&sig, msg.as_bytes(), &public_key()?) {
++        bail!("update signature does not match");
++    }
++    Ok(())
++}
++
++/// Asks the API server for an update; None if there is none for this device.
++pub fn check(manual: bool, format: &str) -> ResultType<Option<Offer>> {
++    let url = update_url();
++    if url.is_empty() {
++        return Ok(None);
++    }
++    let body = serde_json::json!({
++        "id": Config::get_id(),
++        "uuid": crate::encode64(hbb_common::get_uuid()),
++        "version": crate::VERSION,
++        "build": build_number(),
++        "os": std::env::consts::OS,
++        "arch": std::env::consts::ARCH,
++        "format": format,
++        "manual": manual,
++    });
++    let resp = crate::post_request_sync(url, body.to_string(), "")?;
++    let v: serde_json::Value = serde_json::from_str(&resp).context("invalid update response")?;
++    if v.get("url").and_then(|u| u.as_str()).unwrap_or_default().is_empty() {
++        return Ok(None);
++    }
++    let offer: Offer = serde_json::from_value(v).context("invalid update offer")?;
++    if offer.version == crate::VERSION && offer.build == build_number() {
++        return Ok(None);
++    }
++    if offer.size == 0 || offer.size > MAX_UPDATE_SIZE {
++        bail!("update size out of range: {}", offer.size);
++    }
++    verify_signature(&offer, format)?;
++    Ok(Some(offer))
++}
++
++/// Downloads the offered file and checks it against the signed size and hash.
++pub fn download(offer: &Offer, format: &str) -> ResultType<PathBuf> {
++    let file_name = format!(
++        "{}-{}-b{}-{}.{}",
++        crate::get_app_name(),
++        offer.version,
++        offer.build,
++        std::env::consts::ARCH,
++        format
++    );
++    let file_path = std::env::temp_dir().join(file_name);
++    if file_path.is_file() && sha256_of_file(&file_path).ok().as_deref() == Some(&offer.sha256.to_lowercase()) {
++        return Ok(file_path);
++    }
++    let client = create_http_client_with_url_strict(&offer.url)?;
++    let resp = client.get(&offer.url).send()?;
++    if !resp.status().is_success() {
++        bail!("Failed to download the update: {}", resp.status());
++    }
++    let data = resp.bytes()?;
++    if data.len() as u64 != offer.size {
++        bail!("update size mismatch: {} != {}", data.len(), offer.size);
++    }
++    let hash = hex::encode(Sha256::digest(&data));
++    if hash != offer.sha256.to_lowercase() {
++        bail!("update hash mismatch");
++    }
++    let mut file = std::fs::File::create(&file_path)?;
++    file.write_all(&data)?;
++    log::info!("Update {} build {} downloaded to {:?}", offer.version, offer.build, file_path);
++    Ok(file_path)
++}
++
++fn sha256_of_file(path: &PathBuf) -> ResultType<String> {
++    let data = std::fs::read(path)?;
++    Ok(hex::encode(Sha256::digest(&data)))
++}
+diff --git a/src/hbbs_http/sync.rs b/src/hbbs_http/sync.rs
+index 728e1e8..2912797 100644
+--- a/src/hbbs_http/sync.rs
++++ b/src/hbbs_http/sync.rs
+@@ -131,6 +131,7 @@ async fn start_hbbs_sync_async() {
+                     info_uploaded.last_uploaded.map(|x| x.elapsed() >= UPLOAD_SYSINFO_TIMEOUT).unwrap_or(true);
+                 if need_upload {
+                     v["version"] = json!(crate::VERSION);
++                    v["build"] = json!(crate::brand_update::build_number());
+                     v["id"] = json!(id);
+                     v["uuid"] = json!(crate::encode64(hbb_common::get_uuid()));
+                     let ab_name = Config::get_option(keys::OPTION_PRESET_ADDRESS_BOOK_NAME);
+@@ -253,6 +254,11 @@ async fn start_hbbs_sync_async() {
+                             config::Status::set("sysinfo_hash", "".to_owned());
+                             log::info!("sysinfo required to forcely update");
+                         }
++                        // "Update now" from the admin UI (brand_update.rs answers the check).
++                        if rsp.remove("update").is_some() {
++                            #[cfg(target_os = "windows")]
++                            hbb_common::allow_err!(crate::updater::manually_check_update());
++                        }
+                         if let Some(conns)  = rsp.remove("disconnect") {
+                                 if let Ok(conns) = serde_json::from_value::<Vec<i32>>(conns) {
+                                     SENDER.lock().unwrap().send(conns).ok();
+diff --git a/src/lib.rs b/src/lib.rs
+index 649f3ef..e59ded2 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -57,6 +57,7 @@ mod whiteboard;
+ 
+ #[cfg(not(any(target_os = "android", target_os = "ios")))]
+ mod updater;
++pub mod brand_update;
+ 
+ mod ui_cm_interface;
+ mod ui_interface;
+diff --git a/src/updater.rs b/src/updater.rs
+index 0c17840..74686de 100644
+--- a/src/updater.rs
++++ b/src/updater.rs
+@@ -1,3 +1,6 @@
++// The branded build checks for updates through brand_update.rs; the GitHub
++// download helpers below are still used by the macOS root updater.
++#![cfg_attr(not(target_os = "macos"), allow(unused_imports, dead_code))]
+ use crate::{common::do_check_software_update, hbbs_http::create_http_client_with_url_strict};
+ use hbb_common::{bail, config, log, ResultType};
+ use base::config::keys;
+@@ -151,7 +154,10 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
+         let recv_res = rx_msg.recv_timeout(check_interval);
+         match &recv_res {
+             Ok(UpdateMsg::CheckUpdate) | Err(_) => {
+-                if last_check_time.elapsed() < MIN_INTERVAL {
++                // An explicit request ("update now" from the API server) is not throttled.
++                if last_check_time.elapsed() < MIN_INTERVAL
++                    && !matches!(recv_res, Ok(UpdateMsg::CheckUpdate))
++                {
+                     // log::debug!("Update check skipped due to minimum interval.");
+                     continue;
+                 }
+@@ -180,87 +186,27 @@ fn check_update(manually: bool) -> ResultType<()> {
+     if !manually {
+         return Ok(());
+     }
++    // The branded build updates through its own channel (brand_update.rs), the
++    // MSI as well: it is built for this app name.
+     #[cfg(target_os = "windows")]
+-    let update_msi = crate::platform::is_msi_installed()? && !crate::is_custom_client();
++    let update_msi = crate::platform::is_msi_installed()?;
+     if !(manually || config::Config::get_bool_option(keys::OPTION_ALLOW_AUTO_UPDATE)) {
+         return Ok(());
+     }
+-    if do_check_software_update().is_err() {
+-        // ignore
+-        return Ok(());
+-    }
+-
+-    let update_url = crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone();
+-    if update_url.is_empty() {
++    #[cfg(target_os = "windows")]
++    let format = if update_msi { "msi" } else { "exe" };
++    #[cfg(not(target_os = "windows"))]
++    let format = "";
++    let Some(offer) = crate::brand_update::check(manually, format)? else {
+         log::debug!("No update available.");
+-    } else {
+-        let download_url = update_url.replace("tag", "download");
+-        let version = download_url.split('/').last().unwrap_or_default();
++        return Ok(());
++    };
++    log::info!("New version available: {} build {}", offer.version, offer.build);
++    let _file_path = crate::brand_update::download(&offer, format)?;
++    // We have checked if the `conns` is empty before, but we need to check again.
++    if has_no_active_conns() {
+         #[cfg(target_os = "windows")]
+-        let download_url = if cfg!(feature = "flutter") {
+-            let Some(arch) = crate::platform::windows::release_arch_suffix() else {
+-                bail!(
+-                    "Unsupported Windows release architecture: {}",
+-                    std::env::consts::ARCH
+-                );
+-            };
+-            format!(
+-                "{}/rustdesk-{}-{}.{}",
+-                download_url,
+-                version,
+-                arch,
+-                if update_msi { "msi" } else { "exe" }
+-            )
+-        } else {
+-            format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
+-        };
+-        log::debug!("New version available: {}", &version);
+-        let client = create_http_client_with_url_strict(&download_url)?;
+-        let Some(file_path) = get_download_file_from_url(&download_url) else {
+-            bail!("Failed to get the file path from the URL: {}", download_url);
+-        };
+-        let mut is_file_exists = false;
+-        if file_path.exists() {
+-            // Check if the file size is the same as the server file size
+-            // If the file size is the same, we don't need to download it again.
+-            let file_size = std::fs::metadata(&file_path)?.len();
+-            let response = client.head(&download_url).send()?;
+-            if !response.status().is_success() {
+-                bail!("Failed to get the file size: {}", response.status());
+-            }
+-            let total_size = response
+-                .headers()
+-                .get(reqwest::header::CONTENT_LENGTH)
+-                .and_then(|ct_len| ct_len.to_str().ok())
+-                .and_then(|ct_len| ct_len.parse::<u64>().ok());
+-            let Some(total_size) = total_size else {
+-                bail!("Failed to get content length");
+-            };
+-            if file_size == total_size {
+-                is_file_exists = true;
+-            } else {
+-                std::fs::remove_file(&file_path)?;
+-            }
+-        }
+-        if !is_file_exists {
+-            let response = client.get(&download_url).send()?;
+-            if !response.status().is_success() {
+-                bail!(
+-                    "Failed to download the new version file: {}",
+-                    response.status()
+-                );
+-            }
+-            let file_data = response.bytes()?;
+-            let mut file = std::fs::File::create(&file_path)?;
+-            file.write_all(&file_data)?;
+-        }
+-        // We have checked if the `conns` is empty before, but we need to check again.
+-        // No need to care about the downloaded file here, because it's rare case that the `conns` are empty
+-        // before the download, but not empty after the download.
+-        if has_no_active_conns() {
+-            #[cfg(target_os = "windows")]
+-            update_new_version(update_msi, &version, &file_path);
+-        }
++        update_new_version(update_msi, &offer.version, &_file_path);
+     }
+     Ok(())
+ }

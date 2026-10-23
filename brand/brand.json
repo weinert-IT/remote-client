@@ -1,0 +1,18 @@
+{
+  "app_name": "wIT-Remote",
+  "display_name": "wIT-Remote",
+  "company": "weinert-IT",
+  "android_package": "de.weinertit.remote",
+  "server": "rd.weinert-it.com",
+  "api": "https://rd.weinert-it.com",
+  "update_public_key": "QzSIq2ypNmcHNe4hlDNqVjgrrPrq+s0/ZGEBMEl+HiU=",
+  "default_settings": {
+    "allow-auto-update": "Y"
+  },
+  "override_settings": {
+    "hide-server-settings": "Y",
+    "hide-stop-service": "Y",
+    "hide-tray": "Y",
+    "disable-change-permanent-password": "Y"
+  }
+}

@@ -1,0 +1,149 @@
+diff --git a/res/brand/custom.json b/res/brand/custom.json
+new file mode 100644
+index 0000000..0967ef4
+--- /dev/null
++++ b/res/brand/custom.json
+@@ -0,0 +1 @@
++{}
+diff --git a/src/common.rs b/src/common.rs
+index 0d46baf..d28f8f3 100644
+--- a/src/common.rs
++++ b/src/common.rs
+@@ -2357,7 +2357,44 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
+     ThrottledInterval::new(i)
+ }
+ 
++/// Brand configuration compiled into this build (see the remote-client repo,
++/// brand/brand.json), in the same format as a custom client config but not
++/// signed: it is part of the binary, so nothing outside can swap it.
++const EMBEDDED_BRAND_CONFIG: &str = include_str!("../res/brand/custom.json");
++
++/// The name shown to users. The app name itself names files, services and the
++/// URI scheme and must stay alphanumeric with hyphens.
++/// Read straight from the embedded config, so it is right even before
++/// load_custom_client ran (the Windows runner asks for it at startup).
++pub fn get_app_display_name() -> String {
++    lazy_static::lazy_static! {
++        static ref DISPLAY_NAME: String =
++            serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(
++                EMBEDDED_BRAND_CONFIG,
++            )
++            .ok()
++            .and_then(|m| m.get("app-display-name")?.as_str().map(|s| s.to_owned()))
++            .unwrap_or_default();
++    }
++    if DISPLAY_NAME.is_empty() {
++        get_app_name()
++    } else {
++        DISPLAY_NAME.clone()
++    }
++}
++
+ pub fn load_custom_client() {
++    if !EMBEDDED_BRAND_CONFIG.trim().is_empty() && EMBEDDED_BRAND_CONFIG.trim() != "{}" {
++        match serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(
++            EMBEDDED_BRAND_CONFIG,
++        ) {
++            Ok(data) => {
++                apply_custom_client(data);
++                return;
++            }
++            Err(e) => log::error!("Failed to parse the embedded brand config: {e}"),
++        }
++    }
+     #[cfg(debug_assertions)]
+     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
+         read_custom_client(data.trim());
+@@ -2469,13 +2506,16 @@ pub fn read_custom_client(config: &str) {
+         log::error!("Failed to dec custom client config");
+         return;
+     };
+-    let Ok(mut data) =
++    let Ok(data) =
+         serde_json::from_slice::<std::collections::HashMap<String, serde_json::Value>>(&data)
+     else {
+         log::error!("Failed to parse custom client config");
+         return;
+     };
++    apply_custom_client(data);
++}
+ 
++fn apply_custom_client(mut data: std::collections::HashMap<String, serde_json::Value>) {
+     if let Some(app_name) = data.remove("app-name") {
+         if let Some(app_name) = app_name.as_str() {
+             *config::APP_NAME.write().unwrap() = app_name.to_owned();
+diff --git a/src/core_main.rs b/src/core_main.rs
+index b5a451e..400972f 100644
+--- a/src/core_main.rs
++++ b/src/core_main.rs
+@@ -829,7 +829,8 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
+         use winapi::um::winuser::WM_USER;
+         let res = crate::platform::send_message_to_hnwd(
+             &crate::platform::FLUTTER_RUNNER_WIN32_WINDOW_CLASS,
+-            &crate::get_app_name(),
++            // The main window is titled with the display name (getWindowName).
++            &crate::common::get_app_display_name(),
+             (WM_USER + 2) as _, // referred from unilinks desktop pub
+             uni_links.as_str(),
+             false,
+diff --git a/src/flutter.rs b/src/flutter.rs
+index 35fa8cc..234b0c1 100644
+--- a/src/flutter.rs
++++ b/src/flutter.rs
+@@ -206,7 +206,8 @@ pub unsafe extern "C" fn free_c_args(ptr: *mut *mut c_char, len: c_int) {
+ #[cfg(windows)]
+ #[no_mangle]
+ pub unsafe extern "C" fn get_rustdesk_app_name(buffer: *mut u16, length: i32) -> i32 {
+-    let name = crate::platform::wide_string(&crate::get_app_name());
++    // Only used for window titles (flutter/windows/runner/main.cpp).
++    let name = crate::platform::wide_string(&crate::common::get_app_display_name());
+     if length > name.len() as i32 {
+         std::ptr::copy_nonoverlapping(name.as_ptr(), buffer, name.len());
+         return 0;
+diff --git a/src/flutter_ffi.rs b/src/flutter_ffi.rs
+index f9cc2d6..362c9c3 100644
+--- a/src/flutter_ffi.rs
++++ b/src/flutter_ffi.rs
+@@ -1122,7 +1122,8 @@ pub fn main_get_app_name() -> String {
+ }
+ 
+ pub fn main_get_app_name_sync() -> SyncReturn<String> {
+-    SyncReturn(get_app_name())
++    // Used by the UI for titles and texts; paths use main_get_app_name.
++    SyncReturn(crate::common::get_app_display_name())
+ }
+ 
+ pub fn main_uri_prefix_sync() -> SyncReturn<String> {
+diff --git a/src/lang.rs b/src/lang.rs
+index c0021fa..b78724b 100644
+--- a/src/lang.rs
++++ b/src/lang.rs
+@@ -255,7 +255,7 @@ pub fn translate_locale(name: String, locale: &str) -> String {
+                 && !name.starts_with("upgrade_rustdesk_server_pro")
+                 && name != "powered_by_me"
+             {
+-                let app_name = crate::get_app_name();
++                let app_name = crate::common::get_app_display_name();
+                 if !app_name.contains("RustDesk") {
+                     s = s.replace("RustDesk", &app_name);
+                 } else {
+diff --git a/src/tray.rs b/src/tray.rs
+index 50e2de0..6914c0c 100644
+--- a/src/tray.rs
++++ b/src/tray.rs
+@@ -84,13 +84,13 @@ fn make_tray() -> hbb_common::ResultType<()> {
+         if count == 0 {
+             format!(
+                 "{} {}",
+-                crate::get_app_name(),
++                crate::common::get_app_display_name(),
+                 translate("Service is running".to_owned()),
+             )
+         } else {
+             format!(
+                 "{} - {}\n{}",
+-                crate::get_app_name(),
++                crate::common::get_app_display_name(),
+                 translate("Ready".to_owned()),
+                 translate("{".to_string() + &format!("{count}") + "} sessions"),
+             )

@@ -1,0 +1,53 @@
+diff --git a/src/config.rs b/src/config.rs
+index 6fe1004..decaba6 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -457,6 +457,40 @@ pub fn get_online_state() -> i64 {
+ }
+ 
+ #[cfg(not(any(target_os = "android", target_os = "ios")))]
++/// A branded build (APP_NAME other than RustDesk) takes over the config of a
++/// RustDesk install on the same machine on its first start, so the device keeps
++/// its ID, key pair and password: copies RustDesk{suffix}.toml if this app has
++/// no such file yet. The stored secrets are bound to the machine, not the app.
++/// RustDesk's own files are left alone.
++#[allow(unused_variables)]
++fn migrate_from_rustdesk(file: &Path, suffix: &str) {
++    #[cfg(any(target_os = "windows", target_os = "linux"))]
++    {
++        if !matches!(suffix, "" | "2" | "_local" | "_default") || file.exists() {
++            return;
++        }
++        if APP_NAME.read().unwrap().as_str() == "RustDesk" {
++            return;
++        }
++        let Some(project) = directories_next::ProjectDirs::from("", "", "RustDesk") else {
++            return;
++        };
++        let legacy = Config::with_extension(
++            patch(project.config_dir().to_path_buf()).join(format!("RustDesk{suffix}")),
++        );
++        if !legacy.is_file() {
++            return;
++        }
++        if let Some(dir) = file.parent() {
++            let _ = std::fs::create_dir_all(dir);
++        }
++        match std::fs::copy(&legacy, file) {
++            Ok(_) => log::info!("Took over {:?} from {:?}", file, legacy),
++            Err(err) => log::warn!("Failed to take over {:?}: {}", legacy, err),
++        }
++    }
++}
++
+ fn patch(path: PathBuf) -> PathBuf {
+     if let Some(_tmp) = path.to_str() {
+         #[cfg(windows)]
+@@ -592,6 +626,7 @@ impl Config {
+         suffix: &str,
+     ) -> T {
+         let file = Self::file_(suffix);
++        migrate_from_rustdesk(&file, suffix);
+         let cfg = load_path(file);
+         if suffix.is_empty() {
+             log::trace!("{:?}", cfg);
