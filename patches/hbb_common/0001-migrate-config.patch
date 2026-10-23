@@ -1,11 +1,11 @@
 diff --git a/src/config.rs b/src/config.rs
-index 6fe1004..decaba6 100644
+index 6fe1004..9eff633 100644
 --- a/src/config.rs
 +++ b/src/config.rs
-@@ -457,6 +457,40 @@ pub fn get_online_state() -> i64 {
+@@ -456,6 +456,40 @@ pub fn get_online_state() -> i64 {
+     *ONLINE.lock().unwrap().values().max().unwrap_or(&0)
  }
  
- #[cfg(not(any(target_os = "android", target_os = "ios")))]
 +/// A branded build (APP_NAME other than RustDesk) takes over the config of a
 +/// RustDesk install on the same machine on its first start, so the device keeps
 +/// its ID, key pair and password: copies RustDesk{suffix}.toml if this app has
@@ -40,9 +40,9 @@ index 6fe1004..decaba6 100644
 +    }
 +}
 +
+ #[cfg(not(any(target_os = "android", target_os = "ios")))]
  fn patch(path: PathBuf) -> PathBuf {
      if let Some(_tmp) = path.to_str() {
-         #[cfg(windows)]
 @@ -592,6 +626,7 @@ impl Config {
          suffix: &str,
      ) -> T {
