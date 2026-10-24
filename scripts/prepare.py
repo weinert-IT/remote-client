@@ -157,7 +157,10 @@ def square(img, size, pad=0.0):
 def icons(src):
     from PIL import Image
     icon_svg = os.path.join(BRAND, "icon.svg")
-    big = square(svg_png(icon_svg, width=1024), 1024)
+    # Crop to the drawn content first, so empty space in the SVG's viewBox does
+    # not shift the symbol off-center.
+    raw = svg_png(icon_svg, width=1024)
+    big = square(raw.crop(raw.getbbox()), 1024)
     sized = lambda n, pad=0.0: square(big, n, pad)
 
     def save(img, *rel):
