@@ -116,6 +116,21 @@ def rename(src, b):
     replace(src, os.path.join(android, "src", "main", "res", "values", "strings.xml"),
             '<string name="app_name">RustDesk</string>', '<string name="app_name">%s</string>' % disp)
 
+    # Android start dialog (patch 0004): a hint to share only with the own
+    # support instead of RustDesk's generic scam warning.
+    hint = {
+        "de.rs": ("Fernwartung durch %s" % company,
+                  "Starten Sie die Freigabe nur, wenn Sie gerade mit %s sprechen oder einen Termin mit uns vereinbart haben." % company,
+                  "Ruft Sie jemand Unbekanntes an und verlangt Zugriff auf Ihr Gerät, beenden Sie das Gespräch und melden Sie sich bei uns."),
+        "en.rs": ("Remote support by %s" % company,
+                  "Only start sharing if you are talking to %s right now or have an appointment with us." % company,
+                  "If someone you don't know calls and asks for access to your device, hang up and contact us."),
+    }
+    for name, (title, text1, text2) in hint.items():
+        rel = os.path.join("src", "lang", name)
+        for key, value in (("scam_title", title), ("scam_text1", text1), ("scam_text2", text2)):
+            replace(src, rel, re.compile(r'\("%s", "[^"]*"\)' % key), '("%s", "%s")' % (key, value))
+
 
 def svg_png(svg, width=None, height=None):
     args = ["rsvg-convert", "-f", "png"]

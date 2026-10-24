@@ -35,6 +35,10 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
   sysinfo-Upload meldet die Build-Nummer.
 - **0003-retire-rustdesk:** Bei der Installation wird ein vorhandener
   RustDesk-Dienst gestoppt und deaktiviert (nicht entfernt).
+- **0004-android-start-hint:** Der Dialog vor dem Starten der Freigabe unter
+  Android zeigt statt RustDesks allgemeiner Betrugswarnung einen Hinweis im
+  eigenen Branding: Freigabe nur im Gespräch mit dem eigenen Support (Texte
+  setzt `prepare.py` mit dem Firmennamen aus `brand.json`).
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.

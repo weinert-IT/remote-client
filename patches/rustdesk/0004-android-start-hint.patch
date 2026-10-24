@@ -1,0 +1,42 @@
+diff --git a/flutter/lib/mobile/pages/server_page.dart b/flutter/lib/mobile/pages/server_page.dart
+index d61cf70..89d359a 100644
+--- a/flutter/lib/mobile/pages/server_page.dart
++++ b/flutter/lib/mobile/pages/server_page.dart
+@@ -316,8 +316,8 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
+                 begin: Alignment.topRight,
+                 end: Alignment.bottomLeft,
+                 colors: [
+-                  Color(0xffe242bc),
+-                  Color(0xfff4727c),
++                  Color(0xff2f6df0),
++                  Color(0xff1638a8),
+                 ],
+               ),
+             ),
+@@ -329,12 +329,12 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
+                 Row(
+                   children: [
+                     Icon(
+-                      Icons.warning_amber_sharp,
++                      Icons.info_outline,
+                       color: Colors.white,
+                     ),
+                     SizedBox(width: 10),
+                     Text(
+-                      translate("Warning"),
++                      bind.mainGetAppNameSync(),
+                       style: TextStyle(
+                         color: Colors.white,
+                         fontWeight: FontWeight.bold,
+@@ -345,10 +345,7 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
+                 ),
+                 SizedBox(height: 20),
+                 Center(
+-                  child: Image.asset(
+-                    'assets/scam.png',
+-                    width: 180,
+-                  ),
++                  child: loadIcon(96),
+                 ),
+                 SizedBox(height: 18),
+                 Text(
