@@ -154,6 +154,25 @@ def square(img, size, pad=0.0):
     return canvas
 
 
+def fit_circle(big, size, radius):
+    """big (centered, square) scaled so that its farthest visible pixel lies
+    radius * size from the center: launchers cut icons to a circle."""
+    from PIL import Image
+    w = big.width
+    c = (w - 1) / 2
+    alpha = big.getchannel("A").load()
+    far = 0.0
+    for y in range(0, w, 2):
+        for x in range(0, w, 2):
+            if alpha[x, y] > 16:
+                far = max(far, ((x - c) ** 2 + (y - c) ** 2) ** 0.5)
+    inner = max(1, int(round(w * radius * size / far)))
+    im = big.resize((inner, inner), Image.LANCZOS)
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    canvas.paste(im, ((size - inner) // 2, (size - inner) // 2), im)
+    return canvas
+
+
 def icons(src):
     from PIL import Image
     icon_svg = os.path.join(BRAND, "icon.svg")
@@ -188,15 +207,18 @@ def icons(src):
     save(svg_png(os.path.join(BRAND, "logo-light.svg"), height=120), "flutter", "assets", "logo_light.png")
     save(svg_png(os.path.join(BRAND, "logo-dark.svg"), height=120), "flutter", "assets", "logo_dark.png")
 
-    # Android launcher icons; the adaptive foreground keeps the 66% safe zone,
-    # the notification icon is a white silhouette as Android requires.
+    # Android launcher icons. Launchers cut them to a circle, so the symbol is
+    # scaled to its farthest point, not its bounding box: the adaptive
+    # foreground must stay inside the 66 dp safe circle of its 108 dp canvas
+    # (radius 33/108, with some air), the round legacy icon inside its circle.
+    # The notification icon is a white silhouette as Android requires.
     res = ("flutter", "android", "app", "src", "main", "res")
     for dpi, scale in (("mdpi", 1), ("hdpi", 1.5), ("xhdpi", 2), ("xxhdpi", 3), ("xxxhdpi", 4)):
         d = res + ("mipmap-" + dpi,)
         launcher = int(48 * scale)
         save(sized(launcher, 0.04), *d, "ic_launcher.png")
-        save(sized(launcher, 0.04), *d, "ic_launcher_round.png")
-        save(sized(int(108 * scale), 0.2), *d, "ic_launcher_foreground.png")
+        save(fit_circle(big, launcher, 0.44), *d, "ic_launcher_round.png")
+        save(fit_circle(big, int(108 * scale), 0.28), *d, "ic_launcher_foreground.png")
         stat = sized(int(24 * scale), 0.02)
         white = Image.new("RGBA", stat.size, (255, 255, 255, 0))
         white.putalpha(stat.getchannel("A"))
