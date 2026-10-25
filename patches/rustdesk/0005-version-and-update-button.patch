@@ -1,0 +1,233 @@
+diff --git a/flutter/lib/desktop/pages/desktop_setting_page.dart b/flutter/lib/desktop/pages/desktop_setting_page.dart
+index 82f038c..7d4d12d 100644
+--- a/flutter/lib/desktop/pages/desktop_setting_page.dart
++++ b/flutter/lib/desktop/pages/desktop_setting_page.dart
+@@ -2542,6 +2542,7 @@ class _AboutState extends State<_About> {
+               SelectionArea(
+                   child: Text('${translate('Version')}: $version')
+                       .marginSymmetric(vertical: 4.0)),
++              if (isWindows && bind.mainIsInstalled()) const _BrandUpdate(),
+               SelectionArea(
+                   child: Text('${translate('Build Date')}: $buildDate')
+                       .marginSymmetric(vertical: 4.0)),
+@@ -3287,3 +3288,82 @@ void changeSocks5Proxy() async {
+ }
+ 
+ //#endregion
++
++/// Manual update check through the own update channel (brand_update.rs).
++class _BrandUpdate extends StatefulWidget {
++  const _BrandUpdate({Key? key}) : super(key: key);
++
++  @override
++  State<_BrandUpdate> createState() => _BrandUpdateState();
++}
++
++class _BrandUpdateState extends State<_BrandUpdate> {
++  static const _event = 'brand-update';
++  bool _busy = false;
++  bool _available = false;
++  String _text = '';
++
++  @override
++  void initState() {
++    super.initState();
++    platformFFI.registerEventHandler(_event, _event, (evt) async {
++      if (!mounted) return;
++      final next = '${evt['version']} (Build ${evt['build']})';
++      setState(() {
++        _busy = false;
++        _available = false;
++        switch (evt['state']) {
++          case 'none':
++            _text = translate('brand-update-none');
++            break;
++          case 'available':
++            _available = true;
++            _text = translate('brand-update-available').replaceAll('{}', next);
++            break;
++          case 'started':
++            _text = translate('brand-update-started');
++            break;
++          default:
++            _text = '${translate('brand-update-failed')}: ${evt['msg'] ?? ''}';
++        }
++      });
++    }, replace: true);
++  }
++
++  @override
++  void dispose() {
++    platformFFI.unregisterEventHandler(_event, _event);
++    super.dispose();
++  }
++
++  void _run(String key, String text) {
++    setState(() {
++      _busy = true;
++      _text = translate(text);
++    });
++    bind.mainSetCommon(key: key, value: '');
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    return Row(children: [
++      ElevatedButton(
++        onPressed: _busy
++            ? null
++            : () => _available
++                ? _run('brand-install-update', 'brand-update-downloading')
++                : _run('brand-check-update', 'brand-update-checking'),
++        child: Text(translate(
++            _available ? 'brand-update-install' : 'brand-update-check')),
++      ),
++      const SizedBox(width: 12),
++      if (_busy)
++        const SizedBox(
++                width: 16,
++                height: 16,
++                child: CircularProgressIndicator(strokeWidth: 2))
++            .marginOnly(right: 8),
++      Expanded(child: SelectionArea(child: Text(_text))),
++    ]).marginSymmetric(vertical: 8.0);
++  }
++}
+diff --git a/flutter/lib/mobile/pages/settings_page.dart b/flutter/lib/mobile/pages/settings_page.dart
+index 198613a..febc4f5 100644
+--- a/flutter/lib/mobile/pages/settings_page.dart
++++ b/flutter/lib/mobile/pages/settings_page.dart
+@@ -1027,7 +1027,8 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
+                 onPressed: (context) async {
+                   await launchUrl(Uri.parse(url));
+                 },
+-                title: Text(translate("Version: ") + version),
++                title: Text(translate("Version: ") +
++                    '$version (Build ${bind.mainGetCommonSync(key: "brand-build")})'),
+                 value: Padding(
+                   padding: EdgeInsets.symmetric(vertical: 8),
+                   child: Text('rustdesk.com',
+diff --git a/src/brand_update.rs b/src/brand_update.rs
+index e0f1279..9a051d0 100644
+--- a/src/brand_update.rs
++++ b/src/brand_update.rs
+@@ -173,6 +173,22 @@ pub fn download(offer: &Offer, format: &str) -> ResultType<PathBuf> {
+     Ok(file_path)
+ }
+ 
++/// Check (and on request install) from the settings page. Runs in the UI
++/// process; the installer asks for elevation like RustDesk's own update dialog.
++#[cfg(target_os = "windows")]
++pub fn check_from_ui(install: bool) -> ResultType<Option<Offer>> {
++    let format = if crate::platform::is_msi_installed()? { "msi" } else { "exe" };
++    let Some(offer) = check(true, format)? else {
++        return Ok(None);
++    };
++    if install {
++        let path = download(&offer, format)?;
++        let path = path.to_str().ok_or_else(|| anyhow!("invalid update file path"))?;
++        crate::platform::update_to(path)?;
++    }
++    Ok(Some(offer))
++}
++
+ fn sha256_of_file(path: &PathBuf) -> ResultType<String> {
+     let data = std::fs::read(path)?;
+     Ok(hex::encode(Sha256::digest(&data)))
+diff --git a/src/flutter_ffi.rs b/src/flutter_ffi.rs
+index 362c9c3..e441099 100644
+--- a/src/flutter_ffi.rs
++++ b/src/flutter_ffi.rs
+@@ -1135,7 +1135,7 @@ pub fn main_get_license() -> String {
+ }
+ 
+ pub fn main_get_version() -> String {
+-    get_version()
++    format!("{} (Build {})", get_version(), crate::brand_update::BUILD)
+ }
+ 
+ pub fn main_get_fav() -> Vec<String> {
+@@ -2715,6 +2715,8 @@ pub fn main_get_common(key: String) -> String {
+         };
+         #[cfg(not(target_os = "linux"))]
+         return String::new();
++    } else if key == "brand-build" {
++        return crate::brand_update::BUILD.to_owned();
+     } else if key == "permanent-password-set" {
+         return ui_interface::is_permanent_password_set().to_string();
+     } else if key == "local-permanent-password-set" {
+@@ -2775,6 +2777,36 @@ pub fn main_get_common_sync(key: String) -> SyncReturn<String> {
+ }
+ 
+ pub fn main_set_common(_key: String, _value: String) {
++    // "Check for updates" on the settings page; the result comes back as a
++    // "brand-update" event (see brand_update::check_from_ui).
++    #[cfg(target_os = "windows")]
++    if _key == "brand-check-update" || _key == "brand-install-update" {
++        let install = _key == "brand-install-update";
++        std::thread::spawn(move || {
++            let mut data = HashMap::from([("name", serde_json::json!("brand-update"))]);
++            match crate::brand_update::check_from_ui(install) {
++                Ok(Some(offer)) => {
++                    let state = if install { "started" } else { "available" };
++                    data.insert("state", serde_json::json!(state));
++                    data.insert("version", serde_json::json!(offer.version));
++                    data.insert("build", serde_json::json!(offer.build));
++                }
++                Ok(None) => {
++                    data.insert("state", serde_json::json!("none"));
++                }
++                Err(e) => {
++                    log::error!("Update from the settings page failed: {}", e);
++                    data.insert("state", serde_json::json!("error"));
++                    data.insert("msg", serde_json::json!(e.to_string()));
++                }
++            }
++            let _res = flutter::push_global_event(
++                flutter::APP_TYPE_MAIN,
++                serde_json::ser::to_string(&data).unwrap_or("".to_owned()),
++            );
++        });
++        return;
++    }
+     #[cfg(target_os = "windows")]
+     if _key == "install-printer" && crate::platform::is_win_10_or_greater() {
+         std::thread::spawn(move || {
+diff --git a/src/lang/de.rs b/src/lang/de.rs
+index e9893c8..6c2bf96 100644
+--- a/src/lang/de.rs
++++ b/src/lang/de.rs
+@@ -780,6 +780,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
+         ("RustDesk could not load a GStreamer component needed for screen capture ({})", "RustDesk konnte eine für die Bildschirmaufnahme benötigte GStreamer-Komponente nicht laden ({})"),
+         ("Relay fallback delay in seconds", "Verzögerung bis zum Relais in Sekunden"),
+         ("relay-fallback-delay-tip", "Wie lange eine bereits aufgebaute Relaisverbindung auf die direkte WebRTC-Verbindung wartet, bevor sie stattdessen verwendet wird. Erhöhen Sie den Wert, um einer langsamen direkten Verbindung mehr Zeit zu geben; verringern Sie ihn, um in Netzwerken ohne mögliche Direktverbindung schneller auf das Relais zurückzufallen. Leer lassen für den Standardwert von 2.5 Sekunden."),
+-        ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", "")
++        ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", ""),
++        ("brand-update-check", "Nach Updates suchen"),
++        ("brand-update-checking", "Suche nach Updates …"),
++        ("brand-update-none", "Sie verwenden die neueste Version."),
++        ("brand-update-available", "Neue Version verfügbar: {}"),
++        ("brand-update-install", "Jetzt installieren"),
++        ("brand-update-downloading", "Update wird geladen und geprüft …"),
++        ("brand-update-started", "Die Installation wurde gestartet."),
++        ("brand-update-failed", "Update fehlgeschlagen"),
+     ].iter().cloned().collect();
+ }
+diff --git a/src/lang/en.rs b/src/lang/en.rs
+index ca61f35..cb06854 100644
+--- a/src/lang/en.rs
++++ b/src/lang/en.rs
+@@ -279,5 +279,13 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
+         ("terminal-clipboard-write-tip", "An app in the terminal wants to copy text to this device's clipboard. If granted, this permission applies to terminal apps in all connections until you turn it off in Settings. Manual copy and paste are unaffected."),
+         ("port-forward-mux-tip", "Carry every connection of a port-forward mapping over a single connection to the peer, instead of connecting and logging in again for each one."),
+         ("relay-fallback-delay-tip", "How long a relay connection that is already up waits for the direct WebRTC connection before it is used instead. Raise it to give a slow direct connection more time to win; lower it to settle on the relay sooner on networks where a direct connection cannot be made. Leave empty for the default of 2.5 seconds."),
++        ("brand-update-check", "Check for updates"),
++        ("brand-update-checking", "Checking for updates …"),
++        ("brand-update-none", "You are using the latest version."),
++        ("brand-update-available", "New version available: {}"),
++        ("brand-update-install", "Install now"),
++        ("brand-update-downloading", "Downloading and verifying the update …"),
++        ("brand-update-started", "The installation has been started."),
++        ("brand-update-failed", "Update failed"),
+     ].iter().cloned().collect();
+ }

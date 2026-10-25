@@ -39,6 +39,10 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
   Android zeigt statt RustDesks allgemeiner Betrugswarnung einen Hinweis im
   eigenen Branding: Freigabe nur im Gespräch mit dem eigenen Support (Texte
   setzt `prepare.py` mit dem Firmennamen aus `brand.json`).
+- **0005-version-and-update-button:** Die Versionsanzeige enthält die
+  Build-Nummer. Unter Einstellungen → Über gibt es unter Windows (installiert)
+  „Nach Updates suchen“: Prüfung über den eigenen Update-Kanal, Installation
+  nach Bestätigung mit derselben Signaturprüfung.
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.
