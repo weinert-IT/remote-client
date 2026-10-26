@@ -1,0 +1,15 @@
+diff --git a/src/platform/windows.cc b/src/platform/windows.cc
+index c06b58f..a6f2c68 100644
+--- a/src/platform/windows.cc
++++ b/src/platform/windows.cc
+@@ -413,7 +413,9 @@ extern "C"
+     {
+         auto in = in0;
+         auto out0_end = out0 + out0_size;
+-        auto offset = width * 4 + 4;
++        // First pixel of the cursor: one row and one column into the outline
++        // canvas, whose rows are width + 2 pixels long.
++        auto offset = (width + 2) * 4 + 4;
+         auto out = out0 + offset;
+         for (int y = 0; y < height; y++)
+         {

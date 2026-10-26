@@ -43,6 +43,10 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
   Build-Nummer. Unter Einstellungen → Über gibt es unter Windows (installiert)
   „Nach Updates suchen“: Prüfung über den eigenen Update-Kanal, Installation
   nach Bestätigung mit derselben Signaturprüfung.
+- **0006-cursor-outline-offset:** Behebt einen Fehler in RustDesk beim
+  Erfassen von Mauszeigern mit Umriss (Windows-Zeiger mit invertierten
+  Pixeln): Das Bild wurde um eine Zeile minus zwei Pixel versetzt in den
+  Umriss kopiert, die linke Kante des Zeigers erschien rechts daneben.
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.
