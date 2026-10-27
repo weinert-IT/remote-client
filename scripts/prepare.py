@@ -154,22 +154,61 @@ def square(img, size, pad=0.0):
     return canvas
 
 
+def enclosing_circle(points):
+    """Smallest circle around points (Welzl, iterative): (x, y, r)."""
+    import random
+
+    def circle2(a, b):
+        x, y = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+        return x, y, ((a[0] - x) ** 2 + (a[1] - y) ** 2) ** 0.5
+
+    def circle3(a, b, c):
+        d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]))
+        if abs(d) < 1e-9:
+            return max((circle2(a, b), circle2(a, c), circle2(b, c)), key=lambda k: k[2])
+        sa, sb, sc = a[0] ** 2 + a[1] ** 2, b[0] ** 2 + b[1] ** 2, c[0] ** 2 + c[1] ** 2
+        x = (sa * (b[1] - c[1]) + sb * (c[1] - a[1]) + sc * (a[1] - b[1])) / d
+        y = (sa * (c[0] - b[0]) + sb * (a[0] - c[0]) + sc * (b[0] - a[0])) / d
+        return x, y, ((a[0] - x) ** 2 + (a[1] - y) ** 2) ** 0.5
+
+    def inside(k, p):
+        return (p[0] - k[0]) ** 2 + (p[1] - k[1]) ** 2 <= k[2] ** 2 + 1e-6
+
+    pts = list(points)
+    random.Random(0).shuffle(pts)
+    k = (pts[0][0], pts[0][1], 0.0)
+    for i, p in enumerate(pts):
+        if inside(k, p):
+            continue
+        k = (p[0], p[1], 0.0)
+        for j, q in enumerate(pts[:i]):
+            if inside(k, q):
+                continue
+            k = circle2(p, q)
+            for r in pts[:j]:
+                if not inside(k, r):
+                    k = circle3(p, q, r)
+    return k
+
+
 def fit_circle(big, size, radius):
-    """big (centered, square) scaled so that its farthest visible pixel lies
-    radius * size from the center: launchers cut icons to a circle."""
+    """big scaled and placed so that the smallest circle around its visible
+    pixels is centered with radius * size: launchers cut icons to a circle, and
+    every outer corner then keeps the same distance to its edge (an uneven
+    shape such as two hexagons above one is not centered by its box)."""
     from PIL import Image
-    w = big.width
-    c = (w - 1) / 2
+    w, h = big.size
     alpha = big.getchannel("A").load()
-    far = 0.0
-    for y in range(0, w, 2):
-        for x in range(0, w, 2):
-            if alpha[x, y] > 16:
-                far = max(far, ((x - c) ** 2 + (y - c) ** 2) ** 0.5)
-    inner = max(1, int(round(w * radius * size / far)))
-    im = big.resize((inner, inner), Image.LANCZOS)
+    edge = []  # the outermost visible pixels of each row suffice
+    for y in range(h):
+        xs = [x for x in range(w) if alpha[x, y] > 16]
+        if xs:
+            edge += [(xs[0], y), (xs[-1] + 1, y), (xs[0], y + 1), (xs[-1] + 1, y + 1)]
+    cx, cy, far = enclosing_circle(edge)
+    f = radius * size / far
+    im = big.resize((max(1, round(w * f)), max(1, round(h * f))), Image.LANCZOS)
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    canvas.paste(im, ((size - inner) // 2, (size - inner) // 2), im)
+    canvas.paste(im, (round(size / 2 - cx * f), round(size / 2 - cy * f)), im)
     return canvas
 
 
