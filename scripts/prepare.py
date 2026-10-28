@@ -126,9 +126,16 @@ def rename(src, b):
                   "Only start sharing if you are talking to %s right now or have an appointment with us." % company,
                   "If someone you don't know calls and asks for access to your device, hang up and contact us."),
     }
+    # The install card in the narrow left pane: RustDesk's UAC explanation
+    # pushes the button out of a small window.
+    install = {
+        "de.rs": "Installieren Sie %s, damit die Fernwartung zuverlässig funktioniert." % disp,
+        "en.rs": "Install %s so that remote support works reliably." % disp,
+    }
     for name, (title, text1, text2) in hint.items():
         rel = os.path.join("src", "lang", name)
-        for key, value in (("scam_title", title), ("scam_text1", text1), ("scam_text2", text2)):
+        for key, value in (("scam_title", title), ("scam_text1", text1), ("scam_text2", text2),
+                           ("install_tip", install[name])):
             replace(src, rel, re.compile(r'\("%s", "[^"]*"\)' % key), '("%s", "%s")' % (key, value))
 
 

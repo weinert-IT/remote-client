@@ -54,6 +54,9 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
 - **0008-update-no-main-window:** Nach einem Update startet nur das
   Tray-Programm neu, nicht das Hauptfenster. RustDesk holt es sonst, falls es
   vorher offen war (auch minimiert), in den Vordergrund.
+- **0009-left-pane-scroll:** Die linke Spalte des Hauptfensters scrollt, statt
+  unten abgeschnitten zu werden; in kleinen Fenstern bleibt so der
+  Installieren-Knopf erreichbar. Den Hinweistext darüber kürzt `prepare.py`.
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.

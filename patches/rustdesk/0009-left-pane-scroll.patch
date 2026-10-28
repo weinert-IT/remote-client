@@ -1,0 +1,28 @@
+diff --git a/flutter/lib/desktop/pages/desktop_home_page.dart b/flutter/lib/desktop/pages/desktop_home_page.dart
+index 6d370cb..1cceda0 100644
+--- a/flutter/lib/desktop/pages/desktop_home_page.dart
++++ b/flutter/lib/desktop/pages/desktop_home_page.dart
+@@ -135,14 +135,17 @@ class _DesktopHomePageState extends State<DesktopHomePage>
+           children: [
+             Column(
+               children: [
+-                SingleChildScrollView(
+-                  controller: _leftPaneScrollController,
+-                  child: Column(
+-                    key: _childKey,
+-                    children: children,
++                // Bounded, so a small window scrolls to the install button
++                // instead of cutting it off.
++                Expanded(
++                  child: SingleChildScrollView(
++                    controller: _leftPaneScrollController,
++                    child: Column(
++                      key: _childKey,
++                      children: children,
++                    ),
+                   ),
+                 ),
+-                Expanded(child: Container())
+               ],
+             ),
+             if (isOutgoingOnly)
