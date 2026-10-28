@@ -51,6 +51,9 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
   Option, also per Strategie vom API-Server für einzelne Geräte oder Gruppen
   (RustDesk liest es sonst nur aus den fest eingebauten Einstellungen). Gilt
   ab dem nächsten Start des Tray-Programms.
+- **0008-update-no-main-window:** Nach einem Update startet nur das
+  Tray-Programm neu, nicht das Hauptfenster. RustDesk holt es sonst, falls es
+  vorher offen war (auch minimiert), in den Vordergrund.
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.

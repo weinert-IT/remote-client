@@ -1,0 +1,20 @@
+diff --git a/src/platform/windows.rs b/src/platform/windows.rs
+index bab39e3..006e501 100644
+--- a/src/platform/windows.rs
++++ b/src/platform/windows.rs
+@@ -3446,11 +3446,10 @@ pub fn update_me(debug: bool) -> ResultType<()> {
+     // every caller.
+     let main_window_pids =
+         crate::platform::get_pids_of_process_with_args::<_, &str>(&app_exe_name, &[]);
+-    let main_window_sessions = main_window_pids
+-        .iter()
+-        .map(|pid| get_session_id_of_process(pid.as_u32()))
+-        .flatten()
+-        .collect::<Vec<_>>();
++    // Branded build: an automatic update must not bring the main window up in
++    // front of whoever works at the device. Only the tray comes back; the
++    // window is opened from there when needed.
++    let main_window_sessions: Vec<u32> = Vec::new();
+     kill_process_by_pids(&app_exe_name, main_window_pids)?;
+     let tray_pids = crate::platform::get_pids_of_process_with_args(&app_exe_name, &["--tray"]);
+     let tray_sessions = tray_pids
