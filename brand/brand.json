@@ -12,7 +12,6 @@
   "override_settings": {
     "hide-server-settings": "Y",
     "hide-stop-service": "Y",
-    "hide-tray": "Y",
     "disable-change-permanent-password": "Y"
   }
 }

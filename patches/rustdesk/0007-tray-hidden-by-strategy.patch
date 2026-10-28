@@ -1,0 +1,32 @@
+diff --git a/src/tray.rs b/src/tray.rs
+index 6914c0c..6d0a574 100644
+--- a/src/tray.rs
++++ b/src/tray.rs
+@@ -9,8 +9,17 @@ use std::sync::{Arc, Mutex};
+ #[cfg(windows)]
+ use std::time::Duration;
+ 
++// Hidden by the built-in settings, or per device by a strategy from the API
++// server: that one is an ordinary option, held by the service.
++fn tray_hidden() -> bool {
++    crate::ui_interface::get_builtin_option(keys::OPTION_HIDE_TRAY) == "Y"
++        || crate::ipc::get_options()
++            .get(keys::OPTION_HIDE_TRAY)
++            .map_or(false, |v| v == "Y")
++}
++
+ pub fn start_tray() {
+-    if crate::ui_interface::get_builtin_option(keys::OPTION_HIDE_TRAY) == "Y" {
++    if tray_hidden() {
+         #[cfg(not(target_os = "macos"))]
+         {
+             return;
+@@ -148,7 +157,7 @@ fn make_tray() -> hbb_common::ResultType<()> {
+         if let tao::event::Event::NewEvents(tao::event::StartCause::Init) = event {
+             // for fixing https://github.com/rustdesk/rustdesk/discussions/10210#discussioncomment-14600745
+             // so we start tray, but not to show it
+-            if crate::ui_interface::get_builtin_option(keys::OPTION_HIDE_TRAY) == "Y" {
++            if tray_hidden() {
+                 return;
+             }
+             // We create the icon once the event loop is actually running

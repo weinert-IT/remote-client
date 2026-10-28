@@ -47,6 +47,10 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
   Erfassen von Mauszeigern mit Umriss (Windows-Zeiger mit invertierten
   Pixeln): Das Bild wurde um eine Zeile minus zwei Pixel versetzt in den
   Umriss kopiert, die linke Kante des Zeigers erschien rechts daneben.
+- **0007-tray-hidden-by-strategy:** `hide-tray` wirkt auch als normale
+  Option, also per Strategie vom API-Server für einzelne Geräte oder Gruppen
+  (RustDesk liest es sonst nur aus den fest eingebauten Einstellungen). Gilt
+  ab dem nächsten Start des Tray-Programms.
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.
