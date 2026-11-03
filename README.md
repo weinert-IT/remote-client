@@ -62,6 +62,15 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
   angewendet und nicht als Option gespeichert) und das Ändern am Gerät sperren
   (`wit-lock-permanent-password=Y`). Ohne diese Optionen kann das Passwort am
   Gerät selbst gesetzt werden.
+- **0011-account-access-ticket:** Verbinden ohne Passwort über das eigene
+  Konto. Ist man im Client angemeldet und hat kein gespeichertes Passwort, holt
+  der Client beim API-Server ein Einmal-Ticket für das Zielgerät und nutzt es
+  als Passwort (nie gespeichert). Das Zielgerät kennt das Ticket nicht: Passt
+  ein Passwort lokal nicht, reicht es Salt, Challenge und Antwort per HTTPS
+  (strenge Zertifikatsprüfung) an den Server weiter und bekommt Konto und
+  Rechte zurück; die Rechte gelten nur für diese Verbindung
+  (ControlPermissions). Unter Android werden nur „Vollzugriff“ und „Rechte des
+  Geräts“ angenommen.
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.

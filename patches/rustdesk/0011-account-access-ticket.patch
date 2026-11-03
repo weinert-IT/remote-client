@@ -1,0 +1,311 @@
+diff --git a/src/brand_access.rs b/src/brand_access.rs
+new file mode 100644
+index 0000000..b0f5626
+--- /dev/null
++++ b/src/brand_access.rs
+@@ -0,0 +1,127 @@
++//! Access without password through an account (branded build).
++//!
++//! The API server (rd-api, access.go) decides which account may reach which
++//! device and with which rights. The controlling client asks it for a ticket
++//! for one device and uses the ticket as the password; RustDesk only ever sends
++//! sha256(sha256(password + salt) + challenge). The controlled device does not
++//! know the ticket: when a password does not match locally, it hands salt,
++//! challenge and answer to the server, which knows the tickets and answers
++//! with the account and its rights. Both requests use HTTPS with strict
++//! certificate checks, never the insecure TLS fallback.
++use crate::hbbs_http::create_http_client_with_url_strict;
++use hbb_common::{
++    base64::{engine::general_purpose::STANDARD, Engine as _},
++    bail,
++    config::{Config, LocalConfig},
++    log, tokio, ResultType,
++};
++use serde_derive::Deserialize;
++use serde_json::{json, Value};
++use std::time::Duration;
++
++const TIMEOUT: Duration = Duration::from_secs(5);
++
++/// What the server grants an account on this device.
++#[derive(Debug, Default, Deserialize)]
++pub struct Grant {
++    #[serde(default)]
++    pub ok: bool,
++    #[serde(default)]
++    pub user: String,
++    /// "device", "view" or "full" (rd-api access.go).
++    #[serde(default)]
++    pub level: String,
++    /// ControlPermissions.permissions: two bits per permission.
++    #[serde(default)]
++    pub permissions: u64,
++}
++
++fn api_url(path: &str) -> Option<String> {
++    let api = crate::common::get_api_server(
++        Config::get_option("api-server"),
++        Config::get_option("custom-rendezvous-server"),
++    );
++    if api.is_empty() {
++        return None;
++    }
++    Some(format!("{}{}", api.trim_end_matches('/'), path))
++}
++
++fn post(url: String, body: Value, token: Option<String>) -> ResultType<Value> {
++    let client = create_http_client_with_url_strict(&url)?;
++    let mut req = client.post(&url).timeout(TIMEOUT).json(&body);
++    if let Some(token) = token {
++        req = req.bearer_auth(token);
++    }
++    let resp = req.send()?;
++    let status = resp.status();
++    let v: Value = resp.json().unwrap_or_default();
++    if !status.is_success() {
++        bail!("{}: {}", status, v);
++    }
++    Ok(v)
++}
++
++// The blocking HTTP client must not run (or be dropped) on a runtime thread.
++async fn post_async(url: String, body: Value, token: Option<String>) -> ResultType<Value> {
++    tokio::task::spawn_blocking(move || post(url, body, token)).await?
++}
++
++/// Controlling side: a ticket for device `id`, if an account is logged in and
++/// may reach it without password.
++pub async fn request_ticket(id: &str) -> Option<String> {
++    let token = LocalConfig::get_option("access_token");
++    if token.is_empty() || id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric()) {
++        return None;
++    }
++    let url = api_url("/api/wit/access-ticket")?;
++    match post_async(url, json!({ "id": id }), Some(token)).await {
++        Ok(v) => v
++            .get("ticket")
++            .and_then(|t| t.as_str())
++            .filter(|t| !t.is_empty())
++            .map(|t| t.to_owned()),
++        Err(e) => {
++            // 403 for devices the account may not reach without password.
++            log::debug!("no access ticket for {}: {}", id, e);
++            None
++        }
++    }
++}
++
++/// Controlled side: whether `answer` was made from an access ticket for this
++/// device, and what it grants.
++pub async fn verify(
++    salt: &str,
++    challenge: &str,
++    answer: &[u8],
++    session_id: u64,
++    peer_id: &str,
++) -> Option<Grant> {
++    if answer.len() != 32 {
++        return None;
++    }
++    let url = api_url("/api/wit/access-ticket/verify")?;
++    let body = json!({
++        "id": Config::get_id(),
++        "uuid": crate::encode64(hbb_common::get_uuid()),
++        "session_id": session_id,
++        "peer_id": peer_id,
++        "salt": salt,
++        "challenge": challenge,
++        "answer": STANDARD.encode(answer),
++    });
++    match post_async(url, body, None).await {
++        Ok(v) => {
++            let grant: Grant = serde_json::from_value(v).ok()?;
++            if !grant.ok {
++                return None;
++            }
++            Some(grant)
++        }
++        Err(e) => {
++            log::warn!("access ticket check failed: {}", e);
++            None
++        }
++    }
++}
+diff --git a/src/client.rs b/src/client.rs
+index 597dc86..426f397 100644
+--- a/src/client.rs
++++ b/src/client.rs
+@@ -4731,6 +4731,21 @@ pub async fn handle_hash(
+         }
+     }
+ 
++    // Branded build: with an account logged in, an access ticket of the API
++    // server for this device stands in for the password (brand_access.rs).
++    // As SharedAb it is never saved as the peer's password nor synced to the
++    // address book.
++    if password.is_empty() {
++        let id = lc.read().unwrap().id.clone();
++        if let Some(ticket) = crate::brand_access::request_ticket(&id).await {
++            let mut hasher = Sha256::new();
++            hasher.update(ticket.clone());
++            hasher.update(&hash.salt);
++            password = hasher.finalize()[..].into();
++            lc.write().unwrap().password_source = PasswordSource::SharedAb(ticket);
++        }
++    }
++
+     lc.write().unwrap().password = password.clone();
+ 
+     let is_terminal_admin = lc.read().unwrap().is_terminal_admin;
+diff --git a/src/lib.rs b/src/lib.rs
+index 3bdedda..2537bb7 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -63,6 +63,7 @@ mod whiteboard;
+ #[cfg(not(any(target_os = "android", target_os = "ios")))]
+ mod updater;
+ pub mod brand_update;
++pub mod brand_access;
+ 
+ mod ui_cm_interface;
+ mod ui_interface;
+diff --git a/src/server/connection.rs b/src/server/connection.rs
+index e9ea313..1ed3374 100644
+--- a/src/server/connection.rs
++++ b/src/server/connection.rs
+@@ -315,6 +315,14 @@ enum ConnAuditPrimaryAuth {
+     TemporaryPassword = 2,
+     PermanentPassword = 3,
+     SwitchSides = 4,
++    // Branded build: access ticket of an account (brand_access.rs).
++    AccountTicket = 101,
++}
++
++enum AccessTicket {
++    NoTicket,
++    Granted,
++    Denied(&'static str),
+ }
+ 
+ impl ConnAuditPrimaryAuth {
+@@ -2668,6 +2676,85 @@ impl Connection {
+         false
+     }
+ 
++    // Branded build: a password that does not match locally may be an access
++    // ticket of an account (brand_access.rs). The server knows the ticket and
++    // returns the account's rights, which then hold for this connection only.
++    async fn validate_access_ticket(&mut self) -> AccessTicket {
++        let Some(grant) = crate::brand_access::verify(
++            &self.hash.salt,
++            &self.hash.challenge,
++            &self.lr.password,
++            self.lr.session_id,
++            &self.lr.my_id,
++        )
++        .await
++        else {
++            return AccessTicket::NoTicket;
++        };
++        // Per-connection rights are not supported on Android: only grant what
++        // does not need them (full rights, or the device's own settings).
++        #[cfg(target_os = "android")]
++        if grant.level == "view" {
++            return AccessTicket::Denied("View-only access is not supported on this device");
++        }
++        #[cfg(not(target_os = "android"))]
++        if grant.permissions != 0 {
++            let mut cp = ControlPermissions::new();
++            cp.permissions = grant.permissions;
++            self.apply_control_permissions(cp);
++        }
++        // The session kind was checked against the rights before the login.
++        let denied = if self.file_transfer.is_some()
++            && !Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &self.control_permissions)
++        {
++            Some("No permission of file transfer")
++        } else if self.view_camera
++            && !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.control_permissions)
++        {
++            Some("No permission of viewing camera")
++        } else if self.terminal
++            && !Self::permission(keys::OPTION_ENABLE_TERMINAL, &self.control_permissions)
++        {
++            Some("No permission of terminal")
++        } else if matches!(self.lr.union, Some(login_request::Union::PortForward(_)))
++            && !Self::permission(keys::OPTION_ENABLE_TUNNEL, &self.control_permissions)
++        {
++            Some("No permission of IP tunneling")
++        } else {
++            None
++        };
++        if let Some(msg) = denied {
++            return AccessTicket::Denied(msg);
++        }
++        self.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::AccountTicket);
++        log::info!(
++            "access ticket of account {} accepted ({})",
++            grant.user,
++            grant.level
++        );
++        AccessTicket::Granted
++    }
++
++    #[cfg(not(target_os = "android"))]
++    fn apply_control_permissions(&mut self, cp: ControlPermissions) {
++        let id = self.inner.id();
++        {
++            let mut all = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
++            all.retain(|(conn_id, _)| *conn_id != id);
++            all.push((id, cp.clone()));
++        }
++        let cp = Some(cp);
++        self.keyboard = Self::permission(keys::OPTION_ENABLE_KEYBOARD, &cp);
++        self.clipboard = Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &cp);
++        self.audio = Self::permission(keys::OPTION_ENABLE_AUDIO, &cp);
++        self.file = Self::permission(keys::OPTION_ENABLE_FILE_TRANSFER, &cp);
++        self.restart = Self::permission(keys::OPTION_ENABLE_REMOTE_RESTART, &cp);
++        self.recording = Self::permission(keys::OPTION_ENABLE_RECORD_SESSION, &cp);
++        self.block_input = Self::permission(keys::OPTION_ENABLE_BLOCK_INPUT, &cp);
++        self.privacy_mode = Self::permission(keys::OPTION_ENABLE_PRIVACY_MODE, &cp);
++        self.control_permissions = cp;
++    }
++
+     fn is_recent_session(&mut self, tfa: bool) -> bool {
+         SESSIONS
+             .lock()
+@@ -3081,7 +3168,19 @@ impl Connection {
+                 if !res {
+                     return true;
+                 }
+-                if !self.validate_password(allow_logon_screen_password) {
++                let mut valid = self.validate_password(allow_logon_screen_password);
++                if !valid {
++                    match self.validate_access_ticket().await {
++                        AccessTicket::Granted => valid = true,
++                        AccessTicket::Denied(msg) => {
++                            self.send_login_error(msg).await;
++                            sleep(1.).await;
++                            return false;
++                        }
++                        AccessTicket::NoTicket => {}
++                    }
++                }
++                if !valid {
+                     self.update_failure_with_scope(failure, false, 0, FailureScope::Default);
+                     self.check_update_temporary_password(false);
+                     self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
+@@ -7123,10 +7222,9 @@ mod raii {
+ 
+     impl Drop for ControlPermissionsID {
+         fn drop(&mut self) {
+-            if self.control_permissions.is_some() {
+-                let mut lock = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
+-                lock.retain(|(conn_id, _)| *conn_id != self.id);
+-            }
++            // Always: an access ticket may set rights after the login (branded build).
++            let mut lock = CONTROL_PERMISSIONS_ARRAY.lock().unwrap();
++            lock.retain(|(conn_id, _)| *conn_id != self.id);
+         }
+     }
+     impl ControlPermissionsID {
