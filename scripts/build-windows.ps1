@@ -28,9 +28,9 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
 
-# Versionen wie in build.yml / RustDesks flutter-build.yml (1.5.0)
-$RustDeskRef   = "1.5.0"
-$Version       = "1.5.0"
+# Versionen wie in build.yml / RustDesks flutter-build.yml (1.5.1)
+$RustDeskRef   = "1.5.1"
+$Version       = "1.5.1"
 $RustVersion   = "1.75"
 $FlutterVer    = "3.24.5"
 $LlvmVersion   = "15.0.6"

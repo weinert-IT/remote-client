@@ -1,5 +1,5 @@
 diff --git a/flutter/lib/desktop/pages/desktop_home_page.dart b/flutter/lib/desktop/pages/desktop_home_page.dart
-index 6d370cb..1cceda0 100644
+index 1c7ae3d..102dd7e 100644
 --- a/flutter/lib/desktop/pages/desktop_home_page.dart
 +++ b/flutter/lib/desktop/pages/desktop_home_page.dart
 @@ -135,14 +135,17 @@ class _DesktopHomePageState extends State<DesktopHomePage>

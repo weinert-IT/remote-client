@@ -1,21 +1,20 @@
 diff --git a/src/platform/windows.rs b/src/platform/windows.rs
-index a3c3d68..bab39e3 100644
+index 206a88d..0268f72 100644
 --- a/src/platform/windows.rs
 +++ b/src/platform/windows.rs
-@@ -1748,10 +1748,12 @@ reg add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
+@@ -1800,9 +1800,11 @@ reg add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0
  copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
  {dels}
  {import_config}
 +{retire_rustdesk}
  {after_install}
- {install_remote_printer}
  {sleep}
      ",
 +        retire_rustdesk = get_retire_rustdesk(),
          display_icon = shortcut_icon_location.as_deref().unwrap_or(exe.as_str()),
          nested_exe = escape_nested_cmd_ampersands(&exe),
          version = crate::VERSION.replace("-", "."),
-@@ -1772,6 +1774,24 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
+@@ -1824,6 +1826,24 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
      Ok(())
  }
  

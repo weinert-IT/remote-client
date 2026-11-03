@@ -1,8 +1,8 @@
 diff --git a/src/platform/windows.rs b/src/platform/windows.rs
-index bab39e3..006e501 100644
+index 0268f72..a7ebdba 100644
 --- a/src/platform/windows.rs
 +++ b/src/platform/windows.rs
-@@ -3446,11 +3446,10 @@ pub fn update_me(debug: bool) -> ResultType<()> {
+@@ -3533,11 +3533,10 @@ pub fn update_me(debug: bool) -> ResultType<()> {
      // every caller.
      let main_window_pids =
          crate::platform::get_pids_of_process_with_args::<_, &str>(&app_exe_name, &[]);

@@ -11,7 +11,7 @@ src/brand_update.rs (signed_message):
   weinert-it remote-client update v1\\n{version}\\n{build}\\n{os}\\n{arch}\\n{format}\\n{size}\\n{sha256}
 
 Dateinamen: {app}-{version}-b{build}-{arch}.{format}, z. B.
-wIT-Remote-1.5.0-b12-x86_64.msi. Der Update-Server liest update.json aus dem
+wIT-Remote-1.5.1-b13-x86_64.msi. Der Update-Server liest update.json aus dem
 GitHub-Release und bietet die Dateien den Geräten an.
 
 Mit --keygen wird stattdessen ein neues Schlüsselpaar ausgegeben.

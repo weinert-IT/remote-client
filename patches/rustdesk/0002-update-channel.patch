@@ -184,7 +184,7 @@ index 0000000..e0f1279
 +    Ok(hex::encode(Sha256::digest(&data)))
 +}
 diff --git a/src/hbbs_http/sync.rs b/src/hbbs_http/sync.rs
-index 728e1e8..2912797 100644
+index aac220b..aae3e0d 100644
 --- a/src/hbbs_http/sync.rs
 +++ b/src/hbbs_http/sync.rs
 @@ -131,6 +131,7 @@ async fn start_hbbs_sync_async() {
@@ -208,10 +208,10 @@ index 728e1e8..2912797 100644
                                  if let Ok(conns) = serde_json::from_value::<Vec<i32>>(conns) {
                                      SENDER.lock().unwrap().send(conns).ok();
 diff --git a/src/lib.rs b/src/lib.rs
-index 649f3ef..e59ded2 100644
+index f6e48a1..3bdedda 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -57,6 +57,7 @@ mod whiteboard;
+@@ -62,6 +62,7 @@ mod whiteboard;
  
  #[cfg(not(any(target_os = "android", target_os = "ios")))]
  mod updater;
@@ -220,17 +220,17 @@ index 649f3ef..e59ded2 100644
  mod ui_cm_interface;
  mod ui_interface;
 diff --git a/src/updater.rs b/src/updater.rs
-index 0c17840..74686de 100644
+index 5337439..bb93a9f 100644
 --- a/src/updater.rs
 +++ b/src/updater.rs
 @@ -1,3 +1,6 @@
 +// The branded build checks for updates through brand_update.rs; the GitHub
-+// download helpers below are still used by the macOS root updater.
++// release helpers below are still used by the macOS root updater.
 +#![cfg_attr(not(target_os = "macos"), allow(unused_imports, dead_code))]
- use crate::{common::do_check_software_update, hbbs_http::create_http_client_with_url_strict};
- use hbb_common::{bail, config, log, ResultType};
- use base::config::keys;
-@@ -151,7 +154,10 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
+ mod artifact;
+ mod download;
+ 
+@@ -164,7 +167,10 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
          let recv_res = rx_msg.recv_timeout(check_interval);
          match &recv_res {
              Ok(UpdateMsg::CheckUpdate) | Err(_) => {
@@ -242,7 +242,7 @@ index 0c17840..74686de 100644
                      // log::debug!("Update check skipped due to minimum interval.");
                      continue;
                  }
-@@ -180,87 +186,27 @@ fn check_update(manually: bool) -> ResultType<()> {
+@@ -193,57 +199,27 @@ fn check_update(manually: bool) -> ResultType<()> {
      if !manually {
          return Ok(());
      }
@@ -250,14 +250,13 @@ index 0c17840..74686de 100644
 +    // MSI as well: it is built for this app name.
      #[cfg(target_os = "windows")]
 -    let update_msi = crate::platform::is_msi_installed()? && !crate::is_custom_client();
+-    #[cfg(not(target_os = "windows"))]
+-    let update_msi = false;
 +    let update_msi = crate::platform::is_msi_installed()?;
      if !(manually || config::Config::get_bool_option(keys::OPTION_ALLOW_AUTO_UPDATE)) {
          return Ok(());
      }
--    if do_check_software_update().is_err() {
--        // ignore
--        return Ok(());
--    }
+-    do_check_software_update()?;
 -
 -    let update_url = crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone();
 -    if update_url.is_empty() {
@@ -268,8 +267,20 @@ index 0c17840..74686de 100644
 +    let Some(offer) = crate::brand_update::check(manually, format)? else {
          log::debug!("No update available.");
 -    } else {
--        let download_url = update_url.replace("tag", "download");
--        let version = download_url.split('/').last().unwrap_or_default();
+-        let update_format = current_update_format(update_msi);
+-        if update_format == "unknown" {
+-            log::debug!("Automatic update is not supported on this platform.");
+-            return Ok(());
+-        }
+-        let query = crate::update_metadata::UpdateArtifactQuery {
+-            platform: current_update_platform(),
+-            arch: current_update_arch(),
+-            format: update_format,
+-        };
+-        let artifact = verified_update_artifact_from_release_page_url(&update_url, &query)?;
+-        let download_url = artifact.url.as_str();
+-        #[cfg(target_os = "windows")]
+-        let version = artifact.version.as_str();
 +        return Ok(());
 +    };
 +    log::info!("New version available: {} build {}", offer.version, offer.build);
@@ -277,71 +288,30 @@ index 0c17840..74686de 100644
 +    // We have checked if the `conns` is empty before, but we need to check again.
 +    if has_no_active_conns() {
          #[cfg(target_os = "windows")]
--        let download_url = if cfg!(feature = "flutter") {
--            let Some(arch) = crate::platform::windows::release_arch_suffix() else {
--                bail!(
--                    "Unsupported Windows release architecture: {}",
--                    std::env::consts::ARCH
--                );
--            };
--            format!(
--                "{}/rustdesk-{}-{}.{}",
--                download_url,
--                version,
--                arch,
--                if update_msi { "msi" } else { "exe" }
--            )
--        } else {
--            format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
--        };
 -        log::debug!("New version available: {}", &version);
--        let client = create_http_client_with_url_strict(&download_url)?;
--        let Some(file_path) = get_download_file_from_url(&download_url) else {
+-        let Some(file_path) = get_update_download_file_from_url(download_url) else {
 -            bail!("Failed to get the file path from the URL: {}", download_url);
 -        };
--        let mut is_file_exists = false;
--        if file_path.exists() {
--            // Check if the file size is the same as the server file size
--            // If the file size is the same, we don't need to download it again.
--            let file_size = std::fs::metadata(&file_path)?.len();
--            let response = client.head(&download_url).send()?;
--            if !response.status().is_success() {
--                bail!("Failed to get the file size: {}", response.status());
--            }
--            let total_size = response
--                .headers()
--                .get(reqwest::header::CONTENT_LENGTH)
--                .and_then(|ct_len| ct_len.to_str().ok())
--                .and_then(|ct_len| ct_len.parse::<u64>().ok());
--            let Some(total_size) = total_size else {
--                bail!("Failed to get content length");
--            };
--            if file_size == total_size {
--                is_file_exists = true;
--            } else {
--                std::fs::remove_file(&file_path)?;
--            }
--        }
--        if !is_file_exists {
--            let response = client.get(&download_url).send()?;
--            if !response.status().is_success() {
--                bail!(
--                    "Failed to download the new version file: {}",
--                    response.status()
--                );
--            }
--            let file_data = response.bytes()?;
--            let mut file = std::fs::File::create(&file_path)?;
--            file.write_all(&file_data)?;
--        }
+-        ensure_verified_update_artifact(download_url, &file_path, artifact.size, &artifact.sha256)?;
 -        // We have checked if the `conns` is empty before, but we need to check again.
 -        // No need to care about the downloaded file here, because it's rare case that the `conns` are empty
 -        // before the download, but not empty after the download.
 -        if has_no_active_conns() {
 -            #[cfg(target_os = "windows")]
--            update_new_version(update_msi, &version, &file_path);
+-            update_new_version(update_msi, version, &file_path, &artifact.sha256);
+-            #[cfg(target_os = "macos")]
+-            {
+-                let Some(file_path) = file_path.to_str() else {
+-                    bail!("Invalid UTF-8 path: {}", file_path.display());
+-                };
+-                crate::platform::macos::update_to_verified_dmg(
+-                    file_path,
+-                    &artifact.sha256,
+-                    Some(artifact.size),
+-                )?;
+-            }
 -        }
-+        update_new_version(update_msi, &offer.version, &_file_path);
++        update_new_version(update_msi, &offer.version, &_file_path, &offer.sha256);
      }
      Ok(())
  }

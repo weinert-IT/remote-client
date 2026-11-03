@@ -1,8 +1,8 @@
 diff --git a/flutter/lib/mobile/pages/server_page.dart b/flutter/lib/mobile/pages/server_page.dart
-index d61cf70..89d359a 100644
+index ddc1445..9c9fbcb 100644
 --- a/flutter/lib/mobile/pages/server_page.dart
 +++ b/flutter/lib/mobile/pages/server_page.dart
-@@ -316,8 +316,8 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
+@@ -317,8 +317,8 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
                  begin: Alignment.topRight,
                  end: Alignment.bottomLeft,
                  colors: [
@@ -13,7 +13,7 @@ index d61cf70..89d359a 100644
                  ],
                ),
              ),
-@@ -329,12 +329,12 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
+@@ -330,12 +330,12 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
                  Row(
                    children: [
                      Icon(
@@ -28,7 +28,7 @@ index d61cf70..89d359a 100644
                        style: TextStyle(
                          color: Colors.white,
                          fontWeight: FontWeight.bold,
-@@ -345,10 +345,7 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
+@@ -346,10 +346,7 @@ class ScamWarningDialogState extends State<ScamWarningDialog> {
                  ),
                  SizedBox(height: 20),
                  Center(
