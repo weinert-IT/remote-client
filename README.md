@@ -57,6 +57,11 @@ aus `RUSTDESK_REF` (`.github/workflows/build.yml`) und wendet sie an.
 - **0009-left-pane-scroll:** Die linke Spalte des Hauptfensters scrollt, statt
   unten abgeschnitten zu werden; in kleinen Fenstern bleibt so der
   Installieren-Knopf erreichbar. Den Hinweistext darüber kürzt `prepare.py`.
+- **0010-password-by-strategy** (mit **hbb_common/0002**): Strategien des
+  API-Servers können das feste Passwort setzen (`wit-permanent-password`, wird
+  angewendet und nicht als Option gespeichert) und das Ändern am Gerät sperren
+  (`wit-lock-permanent-password=Y`). Ohne diese Optionen kann das Passwort am
+  Gerät selbst gesetzt werden.
 - **hbb_common/0001-migrate-config:** Beim ersten Start übernimmt der Client die
   Konfiguration einer vorhandenen RustDesk-Installation. ID, Schlüsselpaar und
   Passwort bleiben so erhalten.
