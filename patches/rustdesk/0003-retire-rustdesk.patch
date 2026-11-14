@@ -1,5 +1,5 @@
 diff --git a/src/platform/windows.rs b/src/platform/windows.rs
-index 206a88d..0268f72 100644
+index a09783d..155313a 100644
 --- a/src/platform/windows.rs
 +++ b/src/platform/windows.rs
 @@ -1800,9 +1800,11 @@ reg add {subkey} /f /v WindowsInstaller /t REG_DWORD /d 0

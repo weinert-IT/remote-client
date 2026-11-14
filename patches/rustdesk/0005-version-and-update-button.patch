@@ -135,10 +135,10 @@ index e0f1279..1c4d2d2 100644
      let data = std::fs::read(path)?;
      Ok(hex::encode(Sha256::digest(&data)))
 diff --git a/src/flutter_ffi.rs b/src/flutter_ffi.rs
-index 78ea3b8..de44310 100644
+index 692cd8c..f7131a1 100644
 --- a/src/flutter_ffi.rs
 +++ b/src/flutter_ffi.rs
-@@ -1158,7 +1158,7 @@ pub fn main_get_license() -> String {
+@@ -1160,7 +1160,7 @@ pub fn main_get_license() -> String {
  }
  
  pub fn main_get_version() -> String {
@@ -147,7 +147,7 @@ index 78ea3b8..de44310 100644
  }
  
  pub fn main_get_fav() -> Vec<String> {
-@@ -2799,6 +2799,8 @@ pub fn main_get_common(key: String) -> String {
+@@ -2801,6 +2801,8 @@ pub fn main_get_common(key: String) -> String {
          };
          #[cfg(not(target_os = "linux"))]
          return String::new();
@@ -156,7 +156,7 @@ index 78ea3b8..de44310 100644
      } else if key == "permanent-password-set" {
          return ui_interface::is_permanent_password_set().to_string();
      } else if key == "local-permanent-password-set" {
-@@ -2871,6 +2873,36 @@ fn verified_update_artifact_for_release_page_url(
+@@ -2873,6 +2875,36 @@ fn verified_update_artifact_for_release_page_url(
  }
  
  pub fn main_set_common(_key: String, _value: String) {
@@ -194,13 +194,13 @@ index 78ea3b8..de44310 100644
      if _key == "install-printer" && crate::platform::is_win_10_or_greater() {
          std::thread::spawn(move || {
 diff --git a/src/lang/de.rs b/src/lang/de.rs
-index e71e52b..d5de78e 100644
+index c416dcf..be5a945 100644
 --- a/src/lang/de.rs
 +++ b/src/lang/de.rs
-@@ -824,5 +824,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
-         ("Trust duration (days)", "Vertrauensdauer (Tage)"),
-         ("Renew trust", "Vertrauen erneuern"),
+@@ -826,5 +826,14 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
          ("install-directory-not-empty-tip", "Der ausgewählte Ordner ist nicht leer. Bei der Installation können vorhandene Daten gelöscht werden. Erwägen Sie, einen anderen Ordner auszuwählen."),
+         ("Request approval", "Genehmigung anfordern"),
+         ("Forever", "Für immer"),
 +        ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", ""),
 +        ("brand-update-check", "Nach Updates suchen"),
 +        ("brand-update-checking", "Suche nach Updates …"),
@@ -213,7 +213,7 @@ index e71e52b..d5de78e 100644
      ].iter().cloned().collect();
  }
 diff --git a/src/lang/en.rs b/src/lang/en.rs
-index 72b6661..9f453ba 100644
+index dd0d219..acd1991 100644
 --- a/src/lang/en.rs
 +++ b/src/lang/en.rs
 @@ -292,5 +292,13 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =

@@ -184,7 +184,7 @@ index 0000000..e0f1279
 +    Ok(hex::encode(Sha256::digest(&data)))
 +}
 diff --git a/src/hbbs_http/sync.rs b/src/hbbs_http/sync.rs
-index aac220b..aae3e0d 100644
+index c934a79..e1a6a28 100644
 --- a/src/hbbs_http/sync.rs
 +++ b/src/hbbs_http/sync.rs
 @@ -131,6 +131,7 @@ async fn start_hbbs_sync_async() {

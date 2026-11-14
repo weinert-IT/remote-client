@@ -101,7 +101,7 @@ Schlüssel verteilen; ältere Clients nehmen nur Pakete mit dem alten an.
 Lokal prüfen, ob alle Patches auf eine RustDesk-Version passen:
 
 ```bash
-git clone --depth 1 --branch 1.5.1 --recurse-submodules --shallow-submodules https://github.com/rustdesk/rustdesk.git /tmp/rd
+git clone --depth 1 --branch 1.5.3 --recurse-submodules --shallow-submodules https://github.com/rustdesk/rustdesk.git /tmp/rd
 SERVER_KEY=test python3 scripts/prepare.py /tmp/rd
 ```
 
